@@ -1,0 +1,23 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "gcr.io/$PROJECT_ID/flexyfins:$COMMIT_SHA", "."]
+
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "gcr.io/$PROJECT_ID/flexyfins:$COMMIT_SHA"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - flexyfins
+      - --image
+      - gcr.io/$PROJECT_ID/flexyfins:$COMMIT_SHA
+      - --region
+      - $REGION
+      - --allow-unauthenticated
+      - --set-env-vars
+      - ENV=prod,APP_NAME=FlexyFins
+
+images:
+  - gcr.io/$PROJECT_ID/flexyfins:$COMMIT_SHA
