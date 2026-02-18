@@ -107,6 +107,58 @@ def recent_envelopes(limit: int = 25) -> List[Dict[str, Any]]:
         (limit,),
     ).fetchall()
 
+
+def mission_latest(limit: int = 200) -> List[Dict[str, Any]]:
+    """
+    Returns latest row per mission_id (best-effort using ts).
+    """
+    limit = max(1, int(limit))
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        """
+        SELECT e.ts, e.mission_id, e.event_type, e.status, e.proof_ref, e.meta_json
+        FROM envelopes e
+        INNER JOIN (
+            SELECT mission_id, MAX(ts) AS max_ts
+            FROM envelopes
+            GROUP BY mission_id
+        ) m ON e.mission_id = m.mission_id AND e.ts = m.max_ts
+        ORDER BY e.ts DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+
+    out: List[Dict[str, Any]] = []
+    for ts, mission_id, event_type, status, proof_ref, meta_json in rows:
+        try:
+            meta = json.loads(meta_json) if meta_json else {}
+        except Exception:
+            meta = meta_json
+        out.append(
+            {
+                "ts": ts,
+                "mission_id": mission_id,
+                "event_type": event_type,
+                "status": status,
+                "proof_ref": proof_ref,
+                "meta": meta,
+            }
+        )
+    return out
+
+
+def mission_event_types(mission_id: str) -> List[str]:
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT DISTINCT event_type FROM envelopes WHERE mission_id=?",
+        (mission_id,),
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows if r and r[0]]
+
+    
     conn.close()
 
     out = []
