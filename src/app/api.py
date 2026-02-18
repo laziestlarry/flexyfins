@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, field_validator
+from src.app.ops import EVIDENCE_TIERS, RUNBOOKS
+from src.app.store import mission_latest
 
 from src.app.store import ensure_tables, insert_envelope, recent_envelopes, summary_counts
 
@@ -63,6 +65,61 @@ async def ingest(envelope: EventEnvelope):
 async def events(limit: int = 25):
     return {"ok": True, "items": recent_envelopes(limit=limit)}
 
+
+@app.get("/api/gd/proof-matrix")
+def proof_matrix(limit: int = 200):
+    """
+    Mission financial maturity view.
+    """
+    items = mission_latest(limit=limit)
+    out = []
+    for it in items:
+        tier = int(EVIDENCE_TIERS.get(it.get("event_type") or "", 0))
+        out.append(
+            {
+                "mission_id": it.get("mission_id"),
+                "last_event_type": it.get("event_type"),
+                "last_status": it.get("status"),
+                "tier": tier,
+                "proof_ref": it.get("proof_ref"),
+                "ts": it.get("ts"),
+            }
+        )
+    return {"items": out}
+
+
+@app.get("/api/gd/settlement-score")
+def settlement_score(limit: int = 200):
+    """
+    Score per mission based on best evidence seen.
+    """
+    items = mission_latest(limit=limit)
+    scored = []
+    for it in items:
+        tier = int(EVIDENCE_TIERS.get(it.get("event_type") or "", 0))
+        # 25 points per tier
+        score = tier * 25
+        scored.append(
+            {
+                "mission_id": it.get("mission_id"),
+                "tier": tier,
+                "score": score,
+                "last_event_type": it.get("event_type"),
+                "ts": it.get("ts"),
+            }
+        )
+    return {"items": scored}
+
+
+@app.get("/api/gd/runbook")
+def runbook(reason_code: str):
+    reason_code = (reason_code or "").strip()
+    if not reason_code:
+        return {"ok": False, "error": "reason_code required"}
+    if reason_code not in RUNBOOKS:
+        return {"ok": False, "error": "unknown reason_code", "known": sorted(RUNBOOKS.keys())}
+    title, steps = RUNBOOKS[reason_code]
+    return {"ok": True, "reason_code": reason_code, "title": title, "steps": steps}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
